@@ -1,1 +1,22 @@
+'use client';
 
+import { useEffect, useState } from 'react';
+import { ArrowDownToLine, ArrowLeft, FileImage, FileVideo, Image as ImageIcon, Link2, LoaderCircle, PackageOpen } from 'lucide-react';
+import { getSupabase } from '@/lib/supabase';
+
+type SharedFile = { id: string; share_id: string; file_name: string; file_path: string; public_url: string; mime_type: string; size_bytes: number; created_at: string };
+function prettyBytes(n: number) { if (n < 1024) return `${n} B`; if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`; if (n < 1073741824) return `${(n / 1048576).toFixed(1)} MB`; return `${(n / 1073741824).toFixed(2)} GB`; }
+
+export default function SharePage({ params }: { params: Promise<{ id: string }> }) {
+  const [shareId, setShareId] = useState('');
+  const [files, setFiles] = useState<SharedFile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => { let alive = true; params.then(p => { if (alive) setShareId(p.id); }); return () => { alive = false; }; }, [params]);
+  useEffect(() => { if (!shareId) return; let alive = true; (async () => { try { const { data, error } = await getSupabase().from('shared_files').select('id,share_id,file_name,file_path,public_url,mime_type,size_bytes,created_at').eq('share_id', shareId).order('created_at', { ascending: true }); if (error) throw error; if (alive) setFiles(data || []); } catch (e) { if (alive) setError(e instanceof Error ? e.message : 'Could not load this share.'); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [shareId]);
+
+  return <main className="shell share-shell"><header className="topbar"><a className="brand" href="/"><span className="brand-mark"><Link2 size={21}/></span><span>drop<span className="brand-light">share</span></span></a><a className="back-link" href="/"><ArrowLeft size={15}/> Share your own</a></header>
+    {loading ? <div className="state-panel"><LoaderCircle className="spin" size={28}/><h2>Loading your files…</h2><p>Getting the original files ready.</p></div> : error ? <div className="state-panel"><PackageOpen size={34}/><h2>Couldn’t load this share</h2><p>{error}</p><p className="state-hint">Check that the Supabase setup is complete and try again.</p></div> : !files.length ? <div className="state-panel"><PackageOpen size={34}/><h2>This link has no files</h2><p>The files may have been removed or the link may be incorrect.</p><a className="primary-btn link-btn" href="/">Go to DropShare <ArrowLeft size={17}/></a></div> : <><section className="share-hero"><div className="eyebrow"><ImageIcon size={14}/> A DROP OF MEMORIES</div><h1>Files worth<br/><span>keeping.</span></h1><p>Original files, ready for you to download.</p><div className="share-stats"><span>{files.length} file{files.length === 1 ? '' : 's'}</span><span className="stat-dot"/><span>{prettyBytes(files.reduce((s, f) => s + f.size_bytes, 0))} total</span></div></section><section className="shared-files"><div className="shared-heading"><div><h2>Your files</h2><p>Download individually to keep original quality.</p></div><a className="download-all" href="#files" onClick={e => { e.preventDefault(); document.getElementById('files')?.scrollIntoView({behavior:'smooth'}); }}>View files <ArrowDownToLine size={16}/></a></div><div id="files" className="shared-grid">{files.map(file => <article className="shared-card" key={file.id}><div className="preview-area">{file.mime_type?.startsWith('image/') ? <a href={file.public_url} target="_blank" rel="noreferrer" aria-label={`Open ${file.file_name}`}><img src={file.public_url} alt={file.file_name} loading="lazy"/></a> : file.mime_type?.startsWith('video/') ? <video src={file.public_url} controls preload="metadata"/> : <div className="generic-preview">{file.mime_type?.startsWith('video/') ? <FileVideo size={34}/> : <FileImage size={34}/>}</div>}<span className="type-pill">{file.mime_type?.startsWith('video/') ? <><FileVideo size={12}/> VIDEO</> : <><FileImage size={12}/> IMAGE</>}</span></div><div className="shared-card-info"><strong title={file.file_name}>{file.file_name}</strong><span>{prettyBytes(file.size_bytes)}</span><a className="download-btn" href={file.public_url} download={file.file_name} target="_blank" rel="noreferrer"><ArrowDownToLine size={16}/> Download original</a></div></article>)}</div></section></>}
+    <footer><span>Made for sharing, not compressing.</span><span><Link2 size={13}/> Shared with a public link</span></footer>
+  </main>;
+}
